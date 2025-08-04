@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amstrad CPC SNA file analyzer</title>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            line-height: 1.6;
+            padding: 20px;
+            background-color: #f0f2f5;
+            color: #333;
+        }
+
+        /* Styles pour la palette de couleurs */
+        .palette-container {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        p {
+            line-height: 1.2;
+        }
+
+        .palette-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .pen-label {
+            font-size: 0.75rem;
+            color: #94a3b8;
+        }
+
+        .color-swatch {
+            width: 32px;
+            /* 32px équivaut à la classe w-8 */
+            height: 32px;
+            /* 32px équivaut à la classe h-8 */
+            border-radius: 9999px;
+            /* rounded-full */
+            border: 2px solid #94a3b8;
+            /* border-2 border-gray-400 */
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            /* shadow-lg */
+        }
+
+        .container {
+            max-width: 900px;
+            margin: auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        h1,
+        h2,
+        h3 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 5px;
+            margin-top: 25px;
+        }
+
+        .file-input {
+            margin-bottom: 20px;
+            text-align: center;
+            padding: 15px;
+            border: 2px dashed #3498db;
+            border-radius: 8px;
+            background-color: #e8f4f8;
+        }
+
+        .file-input input {
+            font-size: 16px;
+        }
+
+        .results {
+            border-top: 2px solid #ccc;
+            padding-top: 20px;
+            margin-top: 20px;
+        }
+
+        .register-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        .register-table th,
+        .register-table td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+
+        .register-table th {
+            background-color: #ecf0f1;
+            font-weight: bold;
+        }
+
+        .register-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+
+        .info-box {
+            background-color: #e8f4f8;
+            border-left: 5px solid #3498db;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+        }
+
+        .error {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+
+        code {
+            background-color: #ecf0f1;
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        .gemini-btn {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin-top: 20px;
+            cursor: pointer;
+            border-radius: 25px;
+            transition: background-color 0.3s ease;
+        }
+
+        .gemini-btn:hover {
+            background-color: #2980b9;
+        }
+
+        .gemini-btn:hover:enabled {
+            background-color: #3b82f6;
+        }
+
+        .gemini-btn:disabled {
+            background-color: #475569;
+            cursor: not-allowed;
+        }
+
+        .api-key-input-container {
+            margin-top: 1.5rem;
+        }
+
+        .api-key-input {
+            width: 100%;
+            padding: 0.5rem;
+            background-color: #e8f4f8;
+            border: 1px solid #475569;
+            border-radius: 0.5rem;
+            color: #e2e8f0;
+        }
+
+        .gemini-analysis {
+            background-color: #ecf0f1;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+        }
+
+        .loading {
+            font-style: italic;
+            color: #7f8c8d;
+            margin-top: 10px;
+        }
+
+        @media (max-width: 600px) {
+
+            .register-table th,
+            .register-table td {
+                padding: 8px;
+                font-size: 14px;
+            }
+
+            .container {
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>Analyseur de fichier SNA Amstrad CPC</h1>
+        <p>Sélectionnez un fichier de sauvegarde d'état Amstrad CPC (.sna) pour en afficher le contenu de l'en-tête,
+            avec les offsets pour le débogage.</p>
+
+        <div class="file-input">
+            <input type="file" id="snaFile" accept=".sna">
+        </div>
+
+        <div class="results" id="results">
+            <p>Veuillez charger un fichier .sna pour commencer.</p>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('snaFile').addEventListener('change', function (event) {
+            const file = event.target.files[0];
+            if (!file) {
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const buffer = e.target.result;
+                const view = new DataView(buffer);
+                const resultsDiv = document.getElementById('results');
+                resultsDiv.innerHTML = '';
+
+                function decodeCPCType(val) {
+                    const types = [
+                        "CPC464", "CPC664", "CPC6128",
+                        "unknown", "6128 Plus", "464 Plus", "GX4000"];
+                    return types[val] || 'Invalid';
+                }
+
+                function decodeCRTCType(val) {
+                    return (['HD6845S/UM6845', 'UM68454', 'MC6845', '6845 in CPC+ ASIC', '6845 in Pre Asic'][val] || 'Invalid');
+                }
+
+
+                function decodeRAMSelect(value) {
+                    return "";
+                }
+
+
+                function decodeROMSelect(value) {
+                    return '';
+                }
+
+                function decodeMode(value) {
+                    return ["Mode 0 (160x200)", "Mode 1 (320x200)", "Mode 2 (640x200)", "Mode 3 (reserved)"][value] || "Invalid";
+                }
+
+                function decodeCRTCState(value) {
+                    state = [];
+                    if (value & 1) state.push("VSYNC");
+                    if (value & 2) state.push("HSYNC");
+                    if (value & 128) state.push("Vertical Total Adjust Active");
+                    if (state.length > 0) return state.join('/');
+                    return '-';
+                }
+
+                const snaHeaderLayoutV012 = [
+                    { cat: 'SNA', name: "SNA Version", size: 1, type: 'uint8' },
+
+                    { cat: 'Z80', name: "Register AF", size: 2, type: 'uint16' },
+                    { cat: 'Z80', name: "Register BC", size: 2, type: 'uint16' },
+                    { cat: 'Z80', name: "Register DE", size: 2, type: 'uint16' },
+                    { cat: 'Z80', name: "Register HL", size: 2, type: 'uint16' },
+                    { cat: 'Z80', name: "Register R", size: 1, type: 'uint8' },
+                    { cat: 'Z80', name: "Register I", size: 1, type: 'uint8' },
+                    { cat: 'Z80', name: "Register IFF0", size: 1, type: 'uint8' },
+                    { cat: 'Z80', name: "Register IFF1", size: 1, type: 'uint8' },
+                    { cat: 'Z80', name: "Register IX", size: 2, type: 'uint16' },
+                    { cat: 'Z80', name: "Register IY", size: 2, type: 'uint16' },
+                    { cat: 'Z80', name: "Register SP", size: 2, type: 'uint16' },
+                    { cat: 'Z80', name: "Register PC", size: 2, type: 'uint16' },
+                    { cat: 'Z80', name: "Register Interrupt Mode", size: 1, type: 'uint8' },
+                    { cat: 'Z80', name: "Register AF'", size: 2, type: 'uint16' },
+                    { cat: 'Z80', name: "Register BC'", size: 2, type: 'uint16' },
+                    { cat: 'Z80', name: "Register DE'", size: 2, type: 'uint16' },
+                    { cat: 'Z80', name: "Register HL'", size: 2, type: 'uint16' },
+                    { cat: 'GA', name: "GA Pen Selection", size: 1, type: 'uint8' },
+                    { cat: 'GA', name: "Palette", size: 17, type: 'uint8' },
+                    { cat: 'GA', name: "Configuration", size: 1, type: 'uint8' },
+                    { cat: 'GA', name: "RAM Configuration", size: 1, type: 'uint8' },
+                    { cat: 'CRTC', name: "CRTC Selection", size: 1, type: 'uint8' },
+                    { cat: 'CRTC', name: "CRTC Registers", size: 18, type: 'uint8' },
+
+                    { cat: 'GA', name: "ROM Selection", size: 1, type: 'uint8' },
+
+                    { cat: 'PPI', name: "PPI Port A", size: 1, type: 'uint8' },
+                    { cat: 'PPI', name: "PPI Port B", size: 1, type: 'uint8' },
+                    { cat: 'PPI', name: "PPI Port C", size: 1, type: 'uint8' },
+                    { cat: 'PPI', name: "PPI Control", size: 1, type: 'uint8' },
+
+                    { cat: 'PSG', name: "PSG Selected Register", size: 1, type: 'uint8' },
+                    { cat: 'PSG', name: "PSG Registers", size: 16, type: 'uint8' },
+                    { cat: 'SNA', name: "Dump Size", size: 2, type: 'uint16' },
+                ];
+
+                let offset = 0x10;
+
+                snaHeaderLayoutV012.forEach((item) => {
+                    item.offset = offset;
+                    offset += item.size;
+                });
+
+
+
+                // Données pour le format V3
+                const snaHeaderLayoutV3 = [
+                    { cat: 'SNA', name: "CPC Type", offset: 0x6d, size: 1, type: 'uint8', decode: decodeCPCType },
+                    { cat: 'FDC', name: "FDD motor drive state", offset: 0x9C, size: 1, type: 'uint8' },
+                    { cat: 'CRTC', name: "CRTC Type", offset: 0xA4, size: 1, type: 'uint8', decode: decodeCRTCType },
+                    { cat: 'CRTC', name: "C0 : Horizontal Character Counter", offset: 0xA9, size: 1, type: 'uint8' },
+                    { cat: 'CRTC', name: "C4: Character-Line Counter", offset: 0xAB, size: 1, type: 'uint8' },
+                    { cat: 'CRTC', name: "C9: Raster-Line Counter", offset: 0xAC, size: 1, type: 'uint8' },
+                    { cat: 'CRTC', name: "C5 : Vertical Total Adjust Counter", offset: 0xAD, size: 1, type: 'uint8' },
+                    { cat: 'CRTC', name: "Horizontal sync width counter", offset: 0xAE, size: 1, type: 'uint8' },
+                    { cat: 'CRTC', name: "Vertical Sync width counter", offset: 0xAF, size: 1, type: 'uint8' },
+                    { cat: 'CRTC', name: "State Flag", offset: 0xB0, size: 2, type: 'uint16', decode: decodeCRTCState },
+                    { cat: 'GA', name: "Vsync Delay Counter", offset: 0xB2, size: 1, type: 'uint8' },
+                    { cat: 'GA', name: "Interrupt Scanline Counter", offset: 0xB3, size: 1, type: 'uint8' },
+                    { cat: 'GA', name: "Interrupt Request Flag", offset: 0xB4, size: 1, type: 'uint8' },
+
+                    // ...
+                ];
+
+                // Fonction pour lire l'en-tête en utilisant la structure de données
+                function readHeader(view, layout) {
+                    const header = {};
+                    for (const field of layout) {
+                        let value;
+                        if (field.size === 1) {
+                            value = view.getUint8(field.offset);
+                        } else if (field.size === 2) {
+                            value = view.getUint16(field.offset, true);
+                        } else if (field.type === 'uint8' && field.size > 1) {
+                            value = [];
+                            for (let i = 0; i < field.size; i++) {
+                                value.push(view.getUint8(field.offset + i));
+                            }
+                        }
+                        header[field.name] = { val: value, offset: field.offset, size: field.size };
+                    }
+                    return header;
+                }
+
+                const CPC_PALETTE_COLORS = [
+                    { hardwareNumber: "0 (40h)", firmwareNumber: "13", rgb: "#7f7f7f", colorName: "Grey" },
+                    { hardwareNumber: "1 (41h)", firmwareNumber: "13", rgb: "#7f7f7f", colorName: "Grey" },
+                    { hardwareNumber: "2 (42h)", firmwareNumber: "19", rgb: "#00ff7f", colorName: "Sea Green" },
+                    { hardwareNumber: "3 (43h)", firmwareNumber: "25", rgb: "#ffff7f", colorName: "Pastel Yellow" },
+                    { hardwareNumber: "4 (44h)", firmwareNumber: "1", rgb: "#00007f", colorName: "Blue" },
+                    { hardwareNumber: "5 (45h)", firmwareNumber: "7", rgb: "#ff007f", colorName: "Purple" },
+                    { hardwareNumber: "6 (46h)", firmwareNumber: "10", rgb: "#007f7f", colorName: "Cyan" },
+                    { hardwareNumber: "7 (47h)", firmwareNumber: "16", rgb: "#ff7f7f", colorName: "Pink" },
+                    { hardwareNumber: "8 (48h)", firmwareNumber: "7", rgb: "#ff007f", colorName: "Purple" },
+                    { hardwareNumber: "9 (49h)", firmwareNumber: "25", rgb: "#ffff7f", colorName: "Pastel Yellow" },
+                    { hardwareNumber: "10 (4Ah)", firmwareNumber: "24", rgb: "#ffff00", colorName: "Bright Yellow" },
+                    { hardwareNumber: "11 (4Bh)", firmwareNumber: "26", rgb: "#ffffff", colorName: "Bright White" },
+                    { hardwareNumber: "12 (4Ch)", firmwareNumber: "6", rgb: "#ff0000", colorName: "Bright Red" },
+                    { hardwareNumber: "13 (4Dh)", firmwareNumber: "8", rgb: "#ff00ff", colorName: "Bright Magenta" },
+                    { hardwareNumber: "14 (4Eh)", firmwareNumber: "15", rgb: "#ff7f00", colorName: "Orange" },
+                    { hardwareNumber: "15 (4Fh)", firmwareNumber: "17", rgb: "#ff7fff", colorName: "Pastel Magenta" },
+                    { hardwareNumber: "16 (50h)", firmwareNumber: "1", rgb: "#00007f", colorName: "Blue" },
+                    { hardwareNumber: "17 (51h)", firmwareNumber: "19", rgb: "#00ff7f", colorName: "Sea Green" },
+                    { hardwareNumber: "18 (52h)", firmwareNumber: "18", rgb: "#00ff00", colorName: "Bright Green" },
+                    { hardwareNumber: "19 (53h)", firmwareNumber: "20", rgb: "#00ffff", colorName: "Bright Cyan" },
+                    { hardwareNumber: "20 (54h)", firmwareNumber: "0", rgb: "#000000", colorName: "Black" },
+                    { hardwareNumber: "21 (55h)", firmwareNumber: "2", rgb: "#0000ff", colorName: "Bright Blue" },
+                    { hardwareNumber: "22 (56h)", firmwareNumber: "9", rgb: "#007f00", colorName: "Green" },
+                    { hardwareNumber: "23 (57h)", firmwareNumber: "11", rgb: "#007fff", colorName: "Sky Blue" },
+                    { hardwareNumber: "24 (58h)", firmwareNumber: "4", rgb: "#7f007f", colorName: "Magenta" },
+                    { hardwareNumber: "25 (59h)", firmwareNumber: "22", rgb: "#7fff7f", colorName: "Pastel Green" },
+                    { hardwareNumber: "26 (5Ah)", firmwareNumber: "21", rgb: "#7fff00", colorName: "Lime" },
+                    { hardwareNumber: "27 (5Bh)", firmwareNumber: "23", rgb: "#7fffff", colorName: "Pastel Cyan" },
+                    { hardwareNumber: "28 (5Ch)", firmwareNumber: "3", rgb: "#7f0000", colorName: "Red" },
+                    { hardwareNumber: "29 (5Dh)", firmwareNumber: "5", rgb: "#7f00ff", colorName: "Mauve" },
+                    { hardwareNumber: "30 (5Eh)", firmwareNumber: "12", rgb: "#7f7f00", colorName: "Yellow" },
+                    { hardwareNumber: "31 (5Fh)", firmwareNumber: "14", rgb: "#7f7fff", colorName: "Pastel Blue" }
+                ];
+
+
+                // Table de correspondance pour les 27 couleurs du Gate Array Amstrad CPC
+                const CPC_FIRMWARE_COLORS = [
+                    '#000000', '#000080', '#0000FF', '#800000', '#800080', '#8000FF', '#FF0000', '#FF0080', '#FF00FF',
+                    '#008000', '#008080', '#0080FF', '#808000', '#808080', '#8080FF', '#FF8000', '#FF8080', '#FF80FF',
+                    '#00FF00', '#00FF80', '#00FFFF', '#80FF00', '#80FF80', '#80FFFF', '#FFFF00', '#FFFF80', '#FFFFFF'
+                ];
+
+
+
+                try {
+                    let header = {};
+                    let snaVersion = 0;
+                    let headerLayout = [];
+                    let headerSize = 0;
+
+                    snaVersion = view.getUint8(0x10);
+
+                    // Détection de la version SNA
+                    if (snaVersion == 3) {
+                        headerLayout = snaHeaderLayoutV012.concat(snaHeaderLayoutV3);
+
+                        headerSize = 93;
+                    } else {
+                        headerLayout = snaHeaderLayoutV012;
+                        headerSize = 76;
+                    }
+
+                    header = readHeader(view, headerLayout);
+                    // 0x100 ... Data
+
+                    // Additional Chunks
+                    let chunks = [];
+                    chunk_offset = header['Dump Size'].val * 1024 + 0x100;
+
+                    while (chunk_offset < file.size) {
+                        console.info('New Chunk', header['Dump Size'].val, chunk_offset.toString(16), file.size.toString(16));
+
+                        let name = "";
+
+                        for (let i = 0; i < 4; i++) {
+                            name += String.fromCharCode(view.getUint8(chunk_offset + i));
+                        }
+
+
+                        let size = 0;
+                        let info = "";
+                        for (let i = 0; i < 4; i++) {
+                            console.info(view.getUint8(chunk_offset + i + 4));
+                            size += (view.getUint8(chunk_offset + i + 4) << (i * 8));
+                        }
+
+                        console.info("chunk", name, size.toString(16));
+                        let next_offset = chunk_offset + size + 8;
+                        if (next_offset > file.size) {
+                            info = ` Invalid Chunk Size: offset+size > file size! ${next_offset.toString(16)} ${file.size.toString(16)}`;
+                            console.error(info);
+                        }
+                        chunks.push({ name, offset: chunk_offset, size, info });
+                        chunk_offset = next_offset;
+                    }
+
+                    // Compression is simple: if #E5 is encountered, then it is followed by a byte to be repeated x times. A kind of RLE, efficient here as SNAs usually are filled by zeroes
+
+                    globSection = [];
+
+                    globSection.push('<div class="info-box">');
+                    globSection.push(`<h2>SNA Version ${snaVersion} Detected</h2>`);
+                    globSection.push(`<p>Fie Size ${file.size} bytes.</p>`);
+                    globSection.push(`<p>Header Size: ${headerSize}/256 bytes.</p>`);
+                    globSection.push(`<p>Memory Dump Size: ${header['Dump Size'].val} KB.</p>`);
+
+                    if (chunks.length > 0) {
+                        globSection.push('<p>Chunks:</p>');
+                        globSection.push('<table class="register-table">');
+                        globSection.push('<thead><tr><th>Name</th><th>Offset</th><th>Size</th><th></th></tr>');
+                        globSection.push('</thead>');
+                        globSection.push('<tbody>');
+                        chunks.forEach((c) => {
+                            console.info(c);
+                            globSection.push(`<tr><td>${c.name}</td><td>0x${c.offset.toString(16)}</td> <td>0x${c.size.toString(16)} bytes</td><td class="error"> ${c.info}</td></tr>`);
+                        });
+                        globSection.push('</tbody>');
+
+                        globSection.push('</table>');
+
+                    }
+                    globSection.push(`</div>`);
+
+                    resultsDiv.innerHTML += globSection.join('\n');
+
+
+                    // Construction de la chaîne de texte pour l'analyse Gemini
+                    let headerInfoText = [];
+                    headerInfoText.push("Analyse de l'état d'un fichier SNA Amstrad CPC:");
+                    headerInfoText.push(`- Version SNA: ${snaVersion}`);
+
+                    // Affichage des résultats
+                    let html = '<h2>Informations de l\'en-tête SNA</h2>';
+                    const categories = ['SNA', 'Z80', 'GA', 'CRTC', 'PSG', 'PPI', 'FDC'];
+
+                    for (const cat of categories) {
+
+                        headerInfoText.push(`${cat} Parameters`);
+                        html += `<h3>${cat} Parameters</h3>`;
+                        html += '<table class="register-table"><thead><tr><th>Registre</th><th>Valeur (Hex)</th><th>Offset</th><th>Taille (Octets)</th></tr></thead><tbody>';
+
+                        for (const reg of headerLayout) {
+                            if (reg.cat == cat) {
+                                try {
+
+
+
+                                    let val = header[reg.name].val;
+                                    let valueStr;
+                                    if (reg.size === 1) {
+                                        valueStr = `0x${val.toString(16).padStart(2, '0').toUpperCase()}`;
+                                    } else if (reg.size === 2) {
+                                        valueStr = `0x${val.toString(16).padStart(4, '0').toUpperCase()}`;
+                                    } else {
+                                        //valueStr = val.toString();
+                                        valueStr = val.map(p => `0x${p.toString(16).padStart(2, '0')}`).join(', ');
+
+                                    }
+
+                                    if (reg.hasOwnProperty("decode")) {
+                                        valueStr = reg.decode(val) + ' (' + valueStr + ')';
+                                    }
+
+
+                                    html += `<tr><td>${reg.name}</td><td>${valueStr}</td><td>0x${reg.offset.toString(16).padStart(2, '0').toUpperCase()}</td><td>${reg.size}</td></tr>`;
+                                    headerInfoText.push(`- ${reg.name} : ${valueStr}`);
+
+                                } catch (e) {
+                                    console.error(cat, reg, e);
+                                }
+
+                            }
+                        }
+
+                        html += '</tbody></table>';
+
+
+                        if (cat == 'GA') {
+                            const paletteValues = header["Palette"].val;
+                            // Affichage visuel de la palette
+                            html += `<p class="mt-4 font-bold">Palette:</p>`;
+                            html += `<div class="palette-container">`;
+                            paletteValues.forEach((hwcol) => {
+                                const colorHex = CPC_PALETTE_COLORS[hwcol & 31];
+                                html += `<div class="palette-item">
+                                    <div class="color-swatch" style="background-color: ${colorHex.rgb};"></div>
+                                    <span class="pen-label">${colorHex.colorName} (Ink ${colorHex.firmwareNumber})</span>
+                                </div>`;
+                            });
+                            html += `</div>`;
+                            html += `</div>`;
+                        }
+                    }
+
+                    resultsDiv.innerHTML += html;
+
+                    headerInfoText = headerInfoText.join('\n');
+                    console.info(headerInfoText);
+
+                    // Ajout de la section d'analyse Gemini
+                    const geminiAnalysisSection = document.createElement('div');
+                    geminiAnalysisSection.innerHTML = `<hr class="border-gray-500 my-8">
+                    <button id="geminiAnalyzeBtn" class="gemini-btn" disabled>✨ Analyser avec Gemini</button>
+                    
+                    <div class="api-key-input-container">
+                    <label for="apiKeyInput" class="block text-gray-400 mb-1">Clé API pour l'analyse Gemini</label>
+                    <input type="text" id="apiKeyInput" placeholder="Entrez votre clé API ici..." class="api-key-input">
+                    </div>
+                    <div id="geminiAnalysisResult"></div>`;
+                    resultsDiv.appendChild(geminiAnalysisSection);
+
+                    const apiKeyInput = document.getElementById('apiKeyInput');
+                    const geminiBtn = document.getElementById('geminiAnalyzeBtn');
+
+                    // Gère l'état du bouton Gemini en fonction du champ de saisie de la clé API
+                    apiKeyInput.addEventListener('input', () => {
+                        if (apiKeyInput.value.trim() !== '') {
+                            geminiBtn.disabled = false;
+                        } else {
+                            geminiBtn.disabled = true;
+                        }
+                    });
+
+                    geminiBtn.addEventListener('click', () => analyzeWithGemini(headerInfoText));
+
+
+                } catch (error) {
+                    resultsDiv.innerHTML = `<p class="error" > Erreur lors de l'analyse du fichier : ${error.message}. Le fichier est-il un fichier SNA valide ?</p>`;
+                    console.error(error);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        async function analyzeWithGemini(promptText) {
+            const resultDiv = document.getElementById('geminiAnalysisResult');
+            resultDiv.innerHTML = '<p class="loading">Analyse en cours par Gemini...</p>';
+
+            let chatHistory = [];
+            chatHistory.push({
+                role: "user", parts: [{
+                    text: `Voici les données d'en-tête d'un fichier de sauvegarde d'état Amstrad CPC (.sna). Veuillez fournir une analyse et une interprétation de l'état du système à ce moment. Décrivez ce que l'état des registres et les paramètres de l'Amstrad pourraient signifier pour l'exécution du programme. Formattez votre réponse en markdown.
+        ${promptText}`
+                }]
+            });
+
+            const payload = { contents: chatHistory };
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+            let responseText = "Une erreur est survenue lors de l'analyse avec Gemini.";
+            let retryCount = 0;
+            const maxRetries = 3;
+            const baseDelay = 1000;
+
+            while (retryCount < maxRetries) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.status === 429) {
+                        const delay = baseDelay * Math.pow(2, retryCount);
+                        console.log(`Too many requests. Retrying in ${delay / 1000} seconds...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        retryCount++;
+                        continue;
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    if (result.candidates && result.candidates.length > 0 &&
+                        result.candidates[0].content && result.candidates[0].content.parts &&
+                        result.candidates[0].content.parts.length > 0) {
+                        responseText = result.candidates[0].content.parts[0].text;
+                    } else {
+                        responseText = "Aucune analyse n'a pu être générée. Le format de la réponse est incorrect.";
+                    }
+                    break; // Break the loop on success
+                } catch (error) {
+                    console.error('Error calling Gemini API:', error);
+                    responseText = `Erreur lors de l'appel à l'API Gemini : ${error.message}`;
+                    break; // Break the loop on a non-retryable error
+                }
+            }
+
+            resultDiv.innerHTML = `<div class="gemini-analysis">${responseText}</div>`;
+        }
+    </script>
+
+</body>
+
+</html>
